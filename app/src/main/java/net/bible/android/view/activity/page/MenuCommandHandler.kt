@@ -39,6 +39,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
 import net.bible.android.BibleApplication
 import net.bible.android.activity.R
 import net.bible.android.control.backup.BackupControl
@@ -162,27 +163,37 @@ constructor(private val callingActivity: MainBibleActivity,
                     handlerIntent = Intent(callingActivity, DownloadActivity::class.java)
                     requestCode = IntentHelper.UPDATE_SUGGESTED_DOCUMENTS_ON_FINISH
                 }
-                R.id.installZipButton -> handlerIntent = Intent(callingActivity, InstallZip::class.java)
+                R.id.installZipButton -> {
+                    handlerIntent = Intent(callingActivity, InstallZip::class.java)
+                    requestCode = IntentHelper.UPDATE_SUGGESTED_DOCUMENTS_ON_FINISH
+                }
                 R.id.helpButton -> {
                     val app = BibleApplication.application
                     val versionMsg = app.getString(R.string.version_text, CommonUtils.applicationVersionName)
 
+                    data class HelpItem(val title: Int, val text: Int, val videoLink: String? = null)
+
                     val help = arrayOf(
-                        Pair(R.string.help_nav_title, R.string.help_nav_text),
-                        Pair(R.string.help_contextmenus_title, R.string.help_contextmenus_text),
-                        Pair(R.string.help_window_pinning_title,R.string.help_window_pinning_text),
-                        Pair(R.string.help_mynote_title,R.string.help_mynote_text),
-                        Pair(R.string.help_bookmarks_title, R.string.help_bookmarks_text),
-                        Pair(R.string.help_search_title,R.string.help_search_text),
-                        Pair(R.string.help_workspaces_title,R.string.help_workspaces_text),
-                        Pair(R.string.help_hidden_features_title,R.string.help_hidden_features_text)
+                        HelpItem(R.string.help_nav_title, R.string.help_nav_text),
+                        HelpItem(R.string.help_contextmenus_title, R.string.help_contextmenus_text),
+                        HelpItem(R.string.help_window_pinning_title,R.string.help_window_pinning_text,"https://youtu.be/27b1g-D3ibA"),
+                        HelpItem(R.string.help_mynote_title,R.string.help_mynote_text),
+                        HelpItem(R.string.help_bookmarks_title, R.string.help_bookmarks_text),
+                        HelpItem(R.string.help_search_title,R.string.help_search_text),
+                        HelpItem(R.string.help_workspaces_title,R.string.help_workspaces_text, "https://youtu.be/rz0zyEK9qBk"),
+                        HelpItem(R.string.help_hidden_features_title,R.string.help_hidden_features_text)
                     )
 
                     var htmlMessage = ""
 
-                    for(helpPair in help) {
-                        val helpText = app.getString(helpPair.second).replace("\n", "<br>")
-                        htmlMessage += "<b>${app.getString(helpPair.first)}</b><br>$helpText<br><br>"
+                    for(helpItem in help) {
+                        val videoMessage =
+                            if(helpItem.videoLink != null) {
+                                "<i><a href=\"${helpItem.videoLink}\">${app.getString(R.string.watch_tutorial_video)}</a></i><br>"
+                            } else ""
+
+                        val helpText = app.getString(helpItem.text).replace("\n", "<br>")
+                        htmlMessage += "<b>${app.getString(helpItem.title)}</b><br>$videoMessage$helpText<br><br>"
                     }
                     htmlMessage += "<i>$versionMsg</i>"
 
@@ -222,7 +233,7 @@ constructor(private val callingActivity: MainBibleActivity,
                     isHandled = true
                 }
                 R.id.backup_modules -> {
-                    GlobalScope.launch {
+                    GlobalScope.launch(Dispatchers.Main) {
                         backupControl.backupModulesViaIntent(callingActivity)
                     }
                     isHandled = true
@@ -233,7 +244,10 @@ constructor(private val callingActivity: MainBibleActivity,
                     }
                     isHandled = true
                 }
-                R.id.restore_modules -> handlerIntent = Intent(callingActivity, InstallZip::class.java)
+                R.id.restore_modules -> {
+                    handlerIntent = Intent(callingActivity, InstallZip::class.java)
+                    requestCode = IntentHelper.UPDATE_SUGGESTED_DOCUMENTS_ON_FINISH
+                }
                 R.id.restore_app_database -> {
                     AlertDialog.Builder(callingActivity)
                         .setTitle(callingActivity.getString(R.string.backup_restore_title))

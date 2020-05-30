@@ -18,12 +18,10 @@
 package net.bible.service.sword
 
 import net.bible.android.control.ApplicationScope
-import net.bible.service.common.CommonUtils.isHttpUrlAvailable
 import net.bible.service.common.Logger
 import net.bible.service.download.RepoBookDeduplicator
 import net.bible.service.download.RepoFactory
 import net.bible.service.sword.index.IndexCreator
-import org.crosswire.common.util.Version
 import org.crosswire.jsword.book.Book
 import org.crosswire.jsword.book.BookCategory
 import org.crosswire.jsword.book.BookException
@@ -139,14 +137,6 @@ class SwordDocumentFacade @Inject constructor() {
         } finally {
             SwordBookMetaData.setPartialLoading(false)
         }
-    }
-
-    @Throws(InstallException::class, BookException::class)
-    fun isIndexDownloadAvailable(document: Book): Boolean { // not sure how to integrate reuse this in JSword index download
-        val version = document.bookMetaData.getProperty("Version")
-        val versionSuffix = if (version != null) "-" + Version(version).toString() else ""
-        val url = "https://www.crosswire.org/and-bible/indices/v1/" + document.initials + versionSuffix + ".zip"
-        return isHttpUrlAvailable(url)
     }
 
     @Throws(BookException::class)

@@ -47,6 +47,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.view.ActionMode
+import androidx.appcompat.widget.Toolbar
 import androidx.core.view.GestureDetectorCompat
 import androidx.core.view.GravityCompat
 import androidx.core.view.MenuCompat
@@ -115,7 +116,6 @@ import org.crosswire.jsword.passage.Verse
 import org.crosswire.jsword.passage.VerseFactory
 import org.crosswire.jsword.versification.BookName
 import javax.inject.Inject
-import kotlin.concurrent.thread
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlin.math.roundToInt
@@ -164,13 +164,13 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) isInMultiWindowMode else false
 
     // Top offset with only statusbar and toolbar
-    val topOffset2 get() = topOffset1 + if (!isFullScreen) actionBarHeight else 0
+    val topOffset2 get() = topOffset1 + if (!(isFullScreen && actionMode == null)) actionBarHeight else 0
     // Top offset with only statusbar and toolbar taken into account always
     val topOffsetWithActionBar get() = topOffset1 + actionBarHeight
 
     // Offsets with system insets only
     private var topOffset1 = 0
-        get() = if(isFullScreen) 0 else field
+        get() = if(isFullScreen && actionMode == null) 0 else field
 
     private var bottomOffset1 = 0
         get() = if(isFullScreen) 0 else field
@@ -214,6 +214,7 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
 
         backupControl.clearBackupDir()
         windowRepository.initialize()
+        var firstTime = true
 
         ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets: WindowInsetsCompat ->
             val heightChanged =
@@ -225,10 +226,13 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
             leftOffset1 = insets.systemWindowInsetLeft
             rightOffset1 = insets.systemWindowInsetRight
             Log.d(TAG, "onApplyWindowInsets $bottomOffset1 $topOffset1 $leftOffset1 $rightOffset1")
-            if(widthChanged || heightChanged)
-                displaySizeChanged()
+
+            if (widthChanged || heightChanged)
+                displaySizeChanged(firstTime)
             else
                 ABEventBus.getDefault().post(ConfigurationChanged(resources.configuration))
+
+            if(firstTime) firstTime = false
 
             ViewCompat.onApplyWindowInsets(view, insets)
         }
@@ -309,19 +313,21 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
         updateBottomBars()
         setupToolbarFlingDetection()
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-        initialized = true
-        GlobalScope.launch { withContext(Dispatchers.Main) {
-                if(!initialized)
-                    showBetaNotice()
+        if(!initialized) {
+            GlobalScope.launch(Dispatchers.Main) {
+                showBetaNotice()
                 showFirstTimeHelp()
             }
         }
+        initialized = true
     }
 
-    private fun displaySizeChanged() {
+    private fun displaySizeChanged(firstTime: Boolean) {
         updateToolbar()
         updateBottomBars()
-        ABEventBus.getDefault().post(ConfigurationChanged(resources.configuration))
+        if(!firstTime) {
+            ABEventBus.getDefault().post(ConfigurationChanged(resources.configuration))
+        }
         windowControl.windowSizesChanged()
     }
 
@@ -330,15 +336,25 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
         if(!pinningHelpShown) {
             val save = suspendCoroutine<Boolean> {
                 val pinningTitle = getString(R.string.help_window_pinning_title)
-                val pinningText = getString(R.string.help_window_pinning_text)
-                AlertDialog.Builder(this)
+                var pinningText = getString(R.string.help_window_pinning_text)
+
+                pinningText += "<br><i><a href=\"https://youtu.be/27b1g-D3ibA\">${getString(R.string.watch_tutorial_video)}</a></i><br>"
+                
+                val spanned = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    Html.fromHtml(pinningText, Html.FROM_HTML_MODE_LEGACY)
+                } else {
+                    Html.fromHtml(pinningText)
+                }
+                val d = AlertDialog.Builder(this)
                     .setTitle(pinningTitle)
-                    .setMessage(pinningText)
+                    .setMessage(spanned)
                     .setNeutralButton(getString(R.string.first_time_help_show_next_time), null)
                     .setPositiveButton(getString(R.string.first_time_help_do_not_show_again)) { _, _ ->
                         it.resume(true)
                     }
                     .show()
+
+                d.findViewById<TextView>(android.R.id.message)!!.movementMethod = LinkMovementMethod.getInstance()
             }
             if(save) {
                 preferences.edit().putBoolean("pinning-help-shown", true).apply()
@@ -920,6 +936,7 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
     }
 
     private fun updateBottomBars() {
+        Log.d(TAG, "updateBottomBars")
         if(isFullScreen || speakControl.isStopped) {
             transportBarVisible = false
             speakTransport.animate()
@@ -1039,6 +1056,7 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
 
     private fun updateToolbar() {
         toolbar.setPadding(leftOffset1, 0, rightOffset1, 0)
+        setActionModeToolbarPadding()
         navigationView.setPadding(leftOffset1, 0, rightOffset1, bottomOffset1)
         speakTransport.setPadding(leftOffset1, 0, rightOffset1, 0)
         if(isFullScreen) {
@@ -1094,15 +1112,13 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
                     CurrentActivityHolder.getInstance().currentActivity = this
                     Dialogs.instance.showMsg(R.string.restore_confirmation, true) {
                         ABEventBus.getDefault().post(ToastEvent(getString(R.string.loading_backup)))
-                        GlobalScope.launch {
-                            withContext(Dispatchers.IO) {
-                                val inputStream = contentResolver.openInputStream(data!!.data!!)
-                                if (backupControl.restoreDatabaseViaIntent(inputStream!!)) {
-                                    windowControl.windowSync.setResyncRequired()
-                                    withContext(Dispatchers.Main) {
-                                        documentViewManager.clearBibleViewFactory()
-                                        currentWorkspaceId = 0
-                                    }
+                        GlobalScope.launch(Dispatchers.IO) {
+                            val inputStream = contentResolver.openInputStream(data!!.data!!)
+                            if (backupControl.restoreDatabaseViaIntent(inputStream!!)) {
+                                windowControl.windowSync.setResyncRequired()
+                                withContext(Dispatchers.Main) {
+                                    documentViewManager.clearBibleViewFactory()
+                                    currentWorkspaceId = 0
                                 }
                             }
                         }
@@ -1169,8 +1185,9 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
             }
             STD_REQUEST_CODE -> {
                 val classes = arrayOf(GridChoosePassageBook::class.java.name, Bookmarks::class.java.name)
-                if (classes.contains(data?.component?.className)) {
-                    val verseStr = data?.extras!!.getString("verse")
+                val className = data?.component?.className
+                if (className != null && classes.contains(className)) {
+                    val verseStr = data.extras!!.getString("verse")
                     val verse = try {
                         VerseFactory.fromString(navigationControl.versification, verseStr)
                     } catch (e: NoSuchVerseException) {
@@ -1185,13 +1202,14 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
                     windowControl.activeWindowPageManager.currentPage.setKey(verse)
                     return
                 }
-                if(data?.component?.className == MyNotes::class.java.name) {
+                if(className == MyNotes::class.java.name) {
                     invalidateOptionsMenu()
                     documentViewManager.buildView()
                 }
             }
             IntentHelper.UPDATE_SUGGESTED_DOCUMENTS_ON_FINISH -> {
                 documentControl.checkIfAnyPageDocumentsDeleted()
+                updateActions()
                 return
             }
             else -> throw RuntimeException("Unhandled request code $requestCode")
@@ -1265,7 +1283,7 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
-    fun preferenceSettingsChanged() {
+    private fun preferenceSettingsChanged() {
         resetSystemUi()
         if(!refreshIfNightModeChange()) {
             requestSdcardPermission()
@@ -1332,19 +1350,28 @@ class MainBibleActivity : CustomTitlebarActivityBase(), VerseActionModeMediator.
         return !drawerLayout.isDrawerVisible(navigationView)
     }
 
+    private var actionMode: ActionMode? = null
     override fun showVerseActionModeMenu(actionModeCallbackHandler: ActionMode.Callback) {
         Log.d(TAG, "showVerseActionModeMenu")
 
-        runOnUiThread {
+        GlobalScope.launch(Dispatchers.Main) {
             showSystemUI()
-            val actionMode = startSupportActionMode(actionModeCallbackHandler)
+            actionMode = startSupportActionMode(actionModeCallbackHandler)
+
+            setActionModeToolbarPadding()
+
             // Fix for onPrepareActionMode not being called: https://code.google.com/p/android/issues/detail?id=159527
             actionMode?.invalidate()
         }
     }
 
+    private fun setActionModeToolbarPadding() {
+        val toolbar = actionMode?.customView?.findViewById<Toolbar>(R.id.toolbarContextual)
+        toolbar?.setPadding(leftOffset1, 0, rightOffset1, 0)
+    }
+
     override fun clearVerseActionMode(actionMode: ActionMode) {
-        runOnUiThread {
+        GlobalScope.launch(Dispatchers.Main) {
             actionMode.finish()
             resetSystemUi()
         }

@@ -3,8 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="net.bible.android.activity"
     android:installLocation="auto"
-    android:versionCode="368"
-    android:versionName="3.2.368-beta">
+    android:versionCode="370"
+    android:versionName="3.2.370-beta">
 
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -98,7 +98,9 @@
             />
         <activity
             android:name="net.bible.android.view.activity.footnoteandref.FootnoteAndRefActivity"
+            android:theme="@style/Theme.AppCompat.DayNight.Dialog.Alert"
             android:configChanges="keyboardHidden|orientation|screenSize|locale"
+            android:parentActivityName="net.bible.android.view.activity.page.MainBibleActivity"
             android:label="@string/notes" />
         <activity
             android:name="net.bible.android.view.activity.bookmark.Bookmarks"

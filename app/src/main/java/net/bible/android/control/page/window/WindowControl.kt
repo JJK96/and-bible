@@ -59,8 +59,6 @@ open class WindowControl @Inject constructor(
         private val eventManager: EventManager
 ) : ActiveWindowPageManagerProvider {
 
-    private var isSeparatorMoving = false
-    private var stoppedMovingTime: Long = 0
     val windowSync: WindowSync = WindowSync(windowRepository)
 
     private val logger = Logger(this.javaClass.name)
@@ -249,27 +247,10 @@ open class WindowControl @Inject constructor(
         windowSync.reloadAllWindows()
     }
 
-    fun isSeparatorMoving(): Boolean {
-        // allow 1 sec for screen to settle after window separator drag
-        if (stoppedMovingTime > 0) {
-            // allow a second after stopping for screen to settle
-            if (stoppedMovingTime + SCREEN_SETTLE_TIME_MILLIS > System.currentTimeMillis()) {
-                return true
-            }
-            stoppedMovingTime = 0
-        }
-        return isSeparatorMoving
-    }
-
-    fun setSeparatorMoving(isSeparatorMoving: Boolean) {
-        if (!isSeparatorMoving) {
-            // facilitate time for the screen to settle
-            this.stoppedMovingTime = System.currentTimeMillis()
-        }
-        this.isSeparatorMoving = isSeparatorMoving
-
-        val isMoveFinished = !isSeparatorMoving
-
+    var isSeparatorMoving = false
+        set(value) {
+        field = value
+        val isMoveFinished = !value
         eventManager.post(WindowSizeChangedEvent(isMoveFinished))
     }
 
@@ -369,44 +350,37 @@ open class WindowControl @Inject constructor(
     }
 
 
-    fun copySettingsToWorkspace(window: Window) {
-        GlobalScope.launch {
-            withContext(Dispatchers.Main) {
+    fun copySettingsToWorkspace(window: Window)  = GlobalScope.launch(Dispatchers.Main) {
+        val types = WorkspaceEntities.TextDisplaySettings.Types.values()
+        val checkedTypes = chooseSettingsToCopy(window) ?: return@launch
+        val target = windowRepository.textDisplaySettings
+        val source = window.pageManager.textDisplaySettings
 
-            val types = WorkspaceEntities.TextDisplaySettings.Types.values()
-                val checkedTypes = chooseSettingsToCopy(window) ?: return@withContext
-                val target = windowRepository.textDisplaySettings
-                val source = window.pageManager.textDisplaySettings
-
-                for ((tIdx, type) in types.withIndex()) {
-                    if(checkedTypes[tIdx]) {
-                        target.setValue(type, source.getValue(type))
-                    }
-                }
-
-                windowRepository.updateVisibleWindowsTextDisplaySettings()
+        for ((tIdx, type) in types.withIndex()) {
+            if(checkedTypes[tIdx]) {
+                target.setValue(type, source.getValue(type))
             }
         }
+
+        windowRepository.updateVisibleWindowsTextDisplaySettings()
     }
 
     fun copySettingsToWindow(window: Window, order: Int) {
         val secondWindow = windowRepository.visibleWindows[order]
 
-        GlobalScope.launch {
-            withContext(Dispatchers.Main) {
-                val types = WorkspaceEntities.TextDisplaySettings.Types.values()
-                val checkedTypes = chooseSettingsToCopy(window) ?: return@withContext
-                val target = secondWindow.pageManager.textDisplaySettings
-                val source = window.pageManager.textDisplaySettings
+        GlobalScope.launch(Dispatchers.Main) {
+            val types = WorkspaceEntities.TextDisplaySettings.Types.values()
+            val checkedTypes = chooseSettingsToCopy(window) ?: return@launch
+            val target = secondWindow.pageManager.textDisplaySettings
+            val source = window.pageManager.textDisplaySettings
 
-                for ((tIdx, type) in types.withIndex()) {
-                    if (checkedTypes[tIdx]) {
-                        target.setValue(type, source.getValue(type))
-                    }
+            for ((tIdx, type) in types.withIndex()) {
+                if (checkedTypes[tIdx]) {
+                    target.setValue(type, source.getValue(type))
                 }
-
-                secondWindow.bibleView?.updateTextDisplaySettings()
             }
+
+            secondWindow.bibleView?.updateTextDisplaySettings()
         }
     }
 

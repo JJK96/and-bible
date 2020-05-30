@@ -162,8 +162,6 @@ open class Window (
 
         if(!isVisible) return
 
-        lastUpdated = System.currentTimeMillis()
-
         Log.d(TAG, "Loading html in background")
         var chapterVerse: ChapterVerse? = null
         var yOffsetRatio: Float? = null
@@ -175,7 +173,7 @@ open class Window (
             yOffsetRatio = currentPage.currentYOffsetRatio
         }
 
-        GlobalScope.launch {
+        GlobalScope.launch(Dispatchers.IO) {
             if (notifyLocationChange) {
                 PassageChangeMediator.getInstance().contentChangeStarted()
             }
@@ -183,6 +181,8 @@ open class Window (
             val text = fetchText()
 
             withContext(Dispatchers.Main) {
+                lastUpdated = System.currentTimeMillis()
+
                 if(notifyLocationChange) {
                     bibleView?.show(text, updateLocation = true)
                 } else {
